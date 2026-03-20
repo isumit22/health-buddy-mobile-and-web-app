@@ -12,7 +12,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 type Tree = {
 	path: string;
 	children: Tree[];
-	hasPage: boolean;
+	pageFile: 'page.jsx' | 'page.tsx' | null;
 	isParam: boolean;
 	paramName: string;
 	isCatchAll: boolean;
@@ -23,7 +23,7 @@ function buildRouteTree(dir: string, basePath = ''): Tree {
 	const node: Tree = {
 		path: basePath,
 		children: [],
-		hasPage: false,
+		pageFile: null,
 		isParam: false,
 		isCatchAll: false,
 		paramName: '',
@@ -52,8 +52,8 @@ function buildRouteTree(dir: string, basePath = ''): Tree {
 			const childPath = basePath ? `${basePath}/${file}` : file;
 			const childNode = buildRouteTree(filePath, childPath);
 			node.children.push(childNode);
-		} else if (file === 'page.jsx') {
-			node.hasPage = true;
+		} else if (file === 'page.jsx' || file === 'page.tsx') {
+			node.pageFile = file;
     }
 	}
 
@@ -63,9 +63,9 @@ function buildRouteTree(dir: string, basePath = ''): Tree {
 function generateRoutes(node: Tree): RouteConfigEntry[] {
 	const routes: RouteConfigEntry[] = [];
 
-	if (node.hasPage) {
+	if (node.pageFile) {
 		const componentPath =
-			node.path === '' ? `./${node.path}page.jsx` : `./${node.path}/page.jsx`;
+			node.path === '' ? `./${node.path}${node.pageFile}` : `./${node.path}/${node.pageFile}`;
 
 		if (node.path === '') {
 			routes.push(index(componentPath));
@@ -106,6 +106,7 @@ function generateRoutes(node: Tree): RouteConfigEntry[] {
 }
 if (import.meta.env.DEV) {
 	import.meta.glob('./**/page.jsx', {});
+	import.meta.glob('./**/page.tsx', {});
 	if (import.meta.hot) {
 		import.meta.hot.accept((newSelf) => {
 			import.meta.hot?.invalidate();
