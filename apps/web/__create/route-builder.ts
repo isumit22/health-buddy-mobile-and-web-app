@@ -1,6 +1,6 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Hono } from 'hono';
 import type { Handler } from 'hono/types';
 import updatedFetch from '../src/__create/fetch';
@@ -8,8 +8,12 @@ import updatedFetch from '../src/__create/fetch';
 const API_BASENAME = '/api';
 const api = new Hono();
 
-// Get current directory
-const __dirname = join(fileURLToPath(new URL('.', import.meta.url)), '../src/app/api');
+// Get current directory - use process.cwd() for production builds
+const sourceDir = process.env.NODE_ENV === 'production' 
+  ? join(process.cwd(), 'src/app/api')
+  : join(fileURLToPath(new URL('.', import.meta.url)), '../src/app/api');
+
+const __dirname = sourceDir;
 if (globalThis.fetch) {
   globalThis.fetch = updatedFetch;
 }
@@ -81,7 +85,8 @@ async function registerRoutes() {
 
   for (const routeFile of routeFiles) {
     try {
-      const route = await import(/* @vite-ignore */ `${routeFile}?update=${Date.now()}`);
+      const routeFileUrl = pathToFileURL(routeFile).href + `?update=${Date.now()}`;
+      const route = await import(/* @vite-ignore */ routeFileUrl);
 
       const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
       for (const method of methods) {
@@ -92,9 +97,8 @@ async function registerRoutes() {
             const handler: Handler = async (c) => {
               const params = c.req.param();
               if (import.meta.env.DEV) {
-                const updatedRoute = await import(
-                  /* @vite-ignore */ `${routeFile}?update=${Date.now()}`
-                );
+                const updatedRoutePath = pathToFileURL(routeFile).href + `?update=${Date.now()}`;
+                const updatedRoute = await import(/* @vite-ignore */ updatedRoutePath);
                 return await updatedRoute[method](c.req.raw, { params });
               }
               return await route[method](c.req.raw, { params });
@@ -132,7 +136,16 @@ async function registerRoutes() {
 }
 
 // Initial route registration
-await registerRoutes();
+if (import.meta.env.DEV) {
+  await registerRoutes().catch((err) => {
+    console.error('Failed to register routes:', err);
+  });
+} else {
+  // In production, try to register routes but don't block build
+  registerRoutes().catch((err) => {
+    console.error('Failed to register routes in production:', err);
+  });
+}
 
 // Hot reload routes in development
 if (import.meta.env.DEV) {
